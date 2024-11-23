@@ -1,105 +1,83 @@
 package com.example.indoconcertfix;
 
+import android.content.Context;
 import android.graphics.Bitmap;
-import android.os.Handler;
-import android.os.Looper;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.widget.TextView;
+import android.widget.Button;
 
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.firebase.database.DatabaseReference;
+
 import java.util.List;
 
-public class OrderAdapter extends RecyclerView.Adapter<OrderAdapter.OrderViewHolder> {
+public class OrderAdapter extends RecyclerView.Adapter<OrderAdapter.VH> {
+    private final Context ctx;
     private List<TicketOrder> orderList;
-    private TicketDatabase db;
+    private final DatabaseReference dbRef;
 
-    public OrderAdapter(List<TicketOrder> orderList, TicketDatabase db) {
+    public OrderAdapter(Context ctx, List<TicketOrder> orderList, DatabaseReference dbRef) {
+        this.ctx = ctx;
         this.orderList = orderList;
-        this.db = db;
+        this.dbRef = dbRef;
+    }
+
+    public class VH extends RecyclerView.ViewHolder {
+        private final TextView tvJudulOrder;
+        private final TextView tvLokasiOrder;
+        private final TextView tvHargaOrder;
+        private final TextView tvQuantityOrder;
+        private final Button btnDeleteOrder;
+        private final ImageView tvGambarOrder;
+
+
+        public VH(@NonNull View itemView) {
+            super(itemView);
+            this.tvJudulOrder = itemView.findViewById(R.id.tvJudulOrder);
+            this.tvLokasiOrder = itemView.findViewById(R.id.tvLokasiOrder);
+            this.tvHargaOrder = itemView.findViewById(R.id.tvHargaOrder);
+            this.tvQuantityOrder = itemView.findViewById(R.id.tvQuantityOrder);
+            this.tvGambarOrder = itemView.findViewById(R.id.ivGambarT);
+
+            this.btnDeleteOrder = itemView.findViewById(R.id.btRefund);
+        }
+
+        public void bind(TicketOrder order) {
+            tvJudulOrder.setText(order.getJudul());
+            tvLokasiOrder.setText(order.getLokasi());
+            tvHargaOrder.setText("Total Harga : IDR " + order.getTotalHarga());
+            tvQuantityOrder.setText(order.getJumlah() + "x Tiket");
+            if (order.getEncodedImage() != null) {
+                Bitmap decodedBitmap = ImageUtil.decodeBase64ToImage(order.getEncodedImage());
+                tvGambarOrder.setImageBitmap(decodedBitmap);
+            }
+
+            btnDeleteOrder.setOnClickListener(v -> {
+                dbRef.child(order.getId()).removeValue();
+            });
+        }
     }
 
     @NonNull
     @Override
-    public OrderViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-        View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_order, parent, false);
-        return new OrderViewHolder(view);
+    public VH onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+        View v = LayoutInflater.from(ctx).inflate(R.layout.item_order, parent, false);
+        return new VH(v);
     }
 
     @Override
-    public void onBindViewHolder(@NonNull OrderViewHolder holder, int position) {
+    public void onBindViewHolder(@NonNull VH holder, int position) {
         TicketOrder order = orderList.get(position);
-        holder.judulTextView.setText(order.getJudul());
-        holder.lokasiTextView.setText(order.getLokasi());
-        holder.hargaTextView.setText("IDR " + order.getTotalHarga());
-        holder.quantityTextView.setText(order.getQuantity() + "x Tiket");
-        holder.btRefund.setOnClickListener(v -> removeOrder(order, position));
-
-        String base64Image = order.getImageBase64();
-        if (base64Image != null && !base64Image.isEmpty()) {
-            Bitmap bitmap = ImageUtil.decodeBase64ToImage(base64Image); // Decode Base64 ke Bitmap
-            if (bitmap != null) {
-                holder.ivGambarT.setImageBitmap(bitmap);
-            } else {
-                Log.e("OrderAdapter", "Gambar tidak valid dari Base64");
-                holder.ivGambarT.setImageResource(R.drawable.jc5); // Gunakan placeholder jika gambar invalid
-            }
-        } else {
-            holder.ivGambarT.setImageResource(R.drawable.jc5); // Gunakan placeholder jika tidak ada gambar
-        }
-
+        holder.bind(order);
     }
-
-    public void updateOrders(List<TicketOrder> newOrders) {
-        this.orderList.clear(); // Hapus semua order yang ada
-        this.orderList.addAll(newOrders); // Tambahkan order yang baru
-        notifyDataSetChanged(); // Memberi tahu adapter untuk merefresh UI
-    }
-
-    // Untuk menambah order baru di adapter
-    public void addOrder(TicketOrder newOrder) {
-        orderList.add(newOrder);
-        notifyItemInserted(orderList.size() - 1); // Memberi tahu bahwa ada item baru yang ditambahkan
-    }
-
-    // Untuk menghapus order dan memberitahukan perubahan di UI
-    private void removeOrder(TicketOrder order, int position) {
-        new Thread(() -> {
-            db.ticketOrderDao().deleteOrder(order); // Menghapus order dari database
-            if (position >= 0 && position < orderList.size()) {
-                orderList.remove(position); // Menghapus order dari list
-                new Handler(Looper.getMainLooper()).post(() -> {
-                    notifyItemRemoved(position); // Memberi tahu adapter bahwa item telah dihapus
-                });
-            }
-        }).start();
-    }
-
 
     @Override
     public int getItemCount() {
         return orderList.size();
     }
-
-    static class OrderViewHolder extends RecyclerView.ViewHolder {
-        public ImageView ivGambarT;
-        TextView judulTextView, lokasiTextView, hargaTextView, quantityTextView;
-        View btRefund;
-
-        public OrderViewHolder(@NonNull View itemView) {
-            super(itemView);
-            judulTextView = itemView.findViewById(R.id.tvJudulOrder);
-            lokasiTextView = itemView.findViewById(R.id.tvLokasiOrder);
-            hargaTextView = itemView.findViewById(R.id.tvHargaOrder);
-            quantityTextView = itemView.findViewById(R.id.tvQuantityOrder);
-            btRefund = itemView.findViewById(R.id.btRefund);
-            ivGambarT = itemView.findViewById(R.id.ivGambarT);
-        }
-    }
 }
-

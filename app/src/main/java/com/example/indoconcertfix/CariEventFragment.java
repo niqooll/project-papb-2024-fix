@@ -63,7 +63,7 @@ public class CariEventFragment extends Fragment {
 
     }
     private void searchEvents(String keyword) {
-        String url = "http://172.16.9.76/IndoConcertAPI/search_event.php?keyword=" + keyword;
+        String url = "http://10.12.34.64/IndoConcertAPI/search_event.php?keyword=" + keyword;
         @SuppressLint("NotifyDataSetChanged") StringRequest req = new StringRequest(
                 Request.Method.GET,
                 url,

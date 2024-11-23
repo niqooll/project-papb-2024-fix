@@ -1,6 +1,7 @@
 package com.example.indoconcertfix;
 
 import android.annotation.SuppressLint;
+import android.app.ProgressDialog;
 import android.graphics.Bitmap;
 import android.os.Bundle;
 import android.os.Handler;
@@ -19,8 +20,14 @@ import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
 import com.bumptech.glide.Glide;
+import com.bumptech.glide.request.target.SimpleTarget;
+import com.bumptech.glide.request.transition.Transition;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
 
 public class PemesananFragment extends Fragment {
+    public static final String DBURL = "https://indoconcert-b14f1-default-rtdb.asia-southeast1.firebasedatabase.app/";
+
     private TextView judulTextView, judul2Textview, lokasiTextView, hargaTextView, totalHargaTextView;
     private ImageView gambarImageView, tombolBack;
     private TextView tvQuantity;
@@ -52,10 +59,12 @@ public class PemesananFragment extends Fragment {
             judul2Textview.setText(args.getString("judul"));
             lokasiTextView.setText(args.getString("lokasi"));
             String imageUrl = args.getString("imageUrl");
-            if (imageUrl != null) {
+            if (imageUrl != null && !imageUrl.isEmpty()) {
                 Glide.with(this)
                         .load(imageUrl)
                         .into(gambarImageView);
+            } else {
+                gambarImageView.setImageResource(R.drawable.jc5); // Gambar default jika imageUrl kosong
             }
 
             // Mengambil dan memformat harga jika ada di dalam args
@@ -67,8 +76,6 @@ public class PemesananFragment extends Fragment {
                 hargaTextView.setText("IDR 0");
                 totalHargaTextView.setText("IDR 0");
             }
-
-
         } else {
             Log.d("PemesananFragment", "Bundle is null");
         }
@@ -76,39 +83,78 @@ public class PemesananFragment extends Fragment {
         // Tombol Kembali
         tombolBack.setOnClickListener(v -> requireActivity().onBackPressed());
 
-        // Tombol Bayar
+
+        DatabaseReference dbRef = FirebaseDatabase.getInstance(DBURL).getReference("orders");
         btBayar.setOnClickListener(v -> {
-            Fragment orderListFragment = new OrderListFragment();
-            requireActivity().getSupportFragmentManager().beginTransaction()
-                    .replace(R.id.fragment_container, orderListFragment)
-                    .addToBackStack(null)
-                    .commit();
+            // Tampilkan ProgressDialog untuk memberi feedback ke pengguna
+            ProgressDialog progressDialog = new ProgressDialog(requireContext());
+            progressDialog.setMessage("Memproses pesanan...");
+            progressDialog.setCancelable(false);
+            progressDialog.show();
 
-            String judul = judulTextView.getText().toString();
-            String lokasi = lokasiTextView.getText().toString();
-            String harga = hargaTextView.getText().toString();
-            int totalHarga = 0;
-            try {
-                totalHarga = Integer.parseInt(totalHargaTextView.getText().toString().replace("IDR ", "").replace(".", ""));
-            } catch (NumberFormatException e) {
-                e.printStackTrace();
-            }
-            int quantity = ticketQuantity;
+            // Handler untuk kembali ke main thread
+            Handler mainHandler = new Handler(Looper.getMainLooper());
 
-            // Ambil gambar dari ImageView sebagai Bitmap
-            gambarImageView.setDrawingCacheEnabled(true);
-            gambarImageView.buildDrawingCache();
-            Bitmap bitmap = Bitmap.createBitmap(gambarImageView.getDrawingCache());
-            gambarImageView.setDrawingCacheEnabled(false);
-            // Encode gambar ke Base64 menggunakan ImageUtil
-            String base64Image = ImageUtil.encodeImageToBase64(bitmap);
+            // Jalankan operasi berat di thread latar belakang
+            new Thread(() -> {
+                try {
+                    // Proses berat: encoding gambar ke Base64
+                    gambarImageView.setDrawingCacheEnabled(true);
+                    Bitmap bitmap = Bitmap.createBitmap(gambarImageView.getDrawingCache());
+                    gambarImageView.setDrawingCacheEnabled(false);
+                    String encodedImage = ImageUtil.encodeImageToBase64(bitmap);
 
-            TicketOrder order = new TicketOrder(judul, lokasi, harga, quantity, totalHarga);
-            order.setImageBase64(base64Image);
-            saveOrderToDatabase(order);
+                    // Siapkan data untuk Firebase
+                    String id = dbRef.push().getKey();
+                    String judul = judulTextView.getText().toString();
+                    String lokasi = lokasiTextView.getText().toString();
+                    String harga = hargaTextView.getText().toString();
+                    int jumlah = ticketQuantity;
+                    int totalHarga = Integer.parseInt(
+                            totalHargaTextView.getText().toString()
+                                    .replace("IDR ", "")
+                                    .replace(".", "")
+                    );
+
+                    TicketOrder ticketOrder = new TicketOrder(judul, lokasi, harga, jumlah, encodedImage, totalHarga);
+                    ticketOrder.setId(id);
+
+                    // Simpan ke Firebase di latar belakang
+                    dbRef.child(id).setValue(ticketOrder).addOnSuccessListener(aVoid -> {
+                        // Kembali ke main thread untuk perpindahan fragment
+                        mainHandler.post(() -> {
+                            progressDialog.dismiss(); // Tutup ProgressDialog
+                            Toast.makeText(requireContext(), "Pesanan berhasil disimpan!", Toast.LENGTH_SHORT).show();
+
+                            // Pindahkan fragment
+                            Fragment orderListFragment = new OrderListFragment();
+                            Bundle bundle = new Bundle();
+                            bundle.putString("orderId", id); // Sertakan ID pesanan jika diperlukan
+                            orderListFragment.setArguments(bundle);
+
+                            getParentFragmentManager().beginTransaction()
+                                    .replace(R.id.fragment_container, orderListFragment)
+                                    .addToBackStack(null)
+                                    .commit();
+                        });
+                    }).addOnFailureListener(e -> {
+                        // Kembali ke main thread untuk menangani error
+                        mainHandler.post(() -> {
+                            progressDialog.dismiss(); // Tutup ProgressDialog
+                            Toast.makeText(requireContext(), "Gagal menyimpan: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                        });
+                    });
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    mainHandler.post(() -> {
+                        progressDialog.dismiss();
+                        Toast.makeText(requireContext(), "Terjadi kesalahan: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                    });
+                }
+            }).start();
         });
 
-        // Update total harga saat jumlah tiket diubah
+
         btPlus.setOnClickListener(v -> {
             ticketQuantity++;
             tvQuantity.setText(String.valueOf(ticketQuantity));
@@ -126,28 +172,6 @@ public class PemesananFragment extends Fragment {
         return view;
     }
 
-    private void saveOrderToDatabase(TicketOrder order) {
-        TicketDatabase db = TicketDatabase.getDatabase(requireContext());
-
-        new Thread(() -> {
-            try {
-                db.ticketOrderDao().insert(order);
-                new Handler(Looper.getMainLooper()).post(this::showSuccessNotification);
-            } catch (Exception e) {
-                new Handler(Looper.getMainLooper()).post(this::showErrorNotification);
-            }
-        }).start();
-    }
-
-
-    private void showErrorNotification() {
-        Toast.makeText(requireContext(), "Gagal membuat pesanan. Coba lagi.", Toast.LENGTH_SHORT).show();
-    }
-
-    private void showSuccessNotification() {
-        Toast.makeText(requireContext(), "Pesanan berhasil dibuat!", Toast.LENGTH_SHORT).show();
-    }
-
     @SuppressLint({"SetTextI18n", "DefaultLocale"})
     private void updateTotalPrice() {
         try {
@@ -163,4 +187,5 @@ public class PemesananFragment extends Fragment {
             totalHargaTextView.setText("IDR 0");
         }
     }
+
 }

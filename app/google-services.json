@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "304946271460",
+    "firebase_url": "https://indoconcert-b14f1-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "indoconcert-b14f1",
+    "storage_bucket": "indoconcert-b14f1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:304946271460:android:62a6d26657e948ca3c88f1",
+        "android_client_info": {
+          "package_name": "com.example.indoconcertfix"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB0jfq_m2SOV-RhRCEU6Ks6f2SjDywcEBY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

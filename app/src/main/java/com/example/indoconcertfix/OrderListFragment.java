@@ -1,6 +1,7 @@
 package com.example.indoconcertfix;
 
 import android.os.Bundle;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -12,51 +13,73 @@ import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.google.firebase.database.DataSnapshot;
+import com.google.firebase.database.DatabaseError;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.ValueEventListener;
+
+import java.util.ArrayList;
 import java.util.List;
 
 public class OrderListFragment extends Fragment {
+
     private RecyclerView recyclerView;
-    private TicketDatabase db;
     private OrderAdapter adapter;
+    private List<TicketOrder> orderList = new ArrayList<>();
+    private DatabaseReference dbRef;
+    private ImageView btBack;
 
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
         View view = inflater.inflate(R.layout.fragment_order_list, container, false);
 
         recyclerView = view.findViewById(R.id.rvOrderList);
-        recyclerView.setLayoutManager(new LinearLayoutManager(requireContext()));
+        recyclerView.setLayoutManager(new LinearLayoutManager(getContext()));
 
-        db = TicketDatabase.getDatabase(requireContext());
+        dbRef = FirebaseDatabase.getInstance().getReference("orders");
 
-        loadOrders();
+        adapter = new OrderAdapter(getContext(), orderList, dbRef);
+        recyclerView.setAdapter(adapter);
+        fetchOrders();
 
-        ImageView btBack = view.findViewById(R.id.btBack1);
-        btBack.setOnClickListener(v -> requireActivity().onBackPressed());
+        btBack = view.findViewById(R.id.btBack1);
+        btBack.setOnClickListener(v -> {
+            requireActivity().getSupportFragmentManager().popBackStack();
+        });
 
         return view;
     }
 
-    private void addOrder(TicketOrder newOrder) {
-        new Thread(() -> {
-            db.ticketOrderDao().insert(newOrder); // Menambahkan order baru ke database
-            requireActivity().runOnUiThread(() -> {
-                loadOrders(); // Muat ulang order setelah penambahan
-            });
-        }).start();
-    }
+    // Fetch orders from Firebase and update the RecyclerView
+    private void fetchOrders() {
+        dbRef.addValueEventListener(new ValueEventListener() {
+            @Override
+            public void onDataChange(@NonNull DataSnapshot snapshot) {
+                new Thread(() -> {
+                    orderList.clear(); // Clear existing list
+                    for (DataSnapshot orderSnapshot : snapshot.getChildren()) {
+                        TicketOrder order = orderSnapshot.getValue(TicketOrder.class);
+                        if (order != null) {
+                            orderList.add(order); // Add new order to the list
+                        }
+                    }
 
-    private void loadOrders() {
-        new Thread(() -> {
-            List<TicketOrder> orders = db.ticketOrderDao().getAllOrders();
-            requireActivity().runOnUiThread(() -> {
-                if (adapter == null) {
-                    adapter = new OrderAdapter(orders, db); // Buat adapter pertama kali
-                    recyclerView.setAdapter(adapter);
-                } else {
-                    adapter.updateOrders(orders); // Memperbarui data yang ada di adapter
-                }
-            });
-        }).start();
-    }
+                    // Pastikan notifyDataSetChanged() dijalankan di main thread dan fragment masih attached
+                    if (isAdded()) {
+                        requireActivity().runOnUiThread(() -> {
+                            adapter.notifyDataSetChanged(); // Notify adapter about data changes
+                            Log.d("OrderList", "Orders fetched: " + orderList.size());
+                        });
+                    }
+                }).start();
+            }
 
+            @Override
+            public void onCancelled(@NonNull DatabaseError error) {
+                // Handle any errors
+                Log.e("OrderList", "Error fetching orders: " + error.getMessage());
+            }
+        });
+    }
 }
